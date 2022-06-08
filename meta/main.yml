@@ -1,0 +1,16 @@
+---
+galaxy_info:
+  author: homeopz
+  role_name: tailscale
+  company: HomeOpz
+  description: Manage Tailscale Service
+  license: Apache 2
+  min_ansible_version: 2.10.0
+  platforms:
+    - name: Ubuntu
+      versions:
+        - focal
+        - jammy
+  galaxy_tags:
+    - tailscale
+dependencies: []

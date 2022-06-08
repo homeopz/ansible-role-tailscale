@@ -1,0 +1,96 @@
+---
+- name: Set platform facts
+  set_fact:
+    distro: "{{ ansible_distribution | lower }}"
+    major: "{{ ansible_distribution_release }}"
+
+- name: Install APT GPG key
+  apt_key:
+    state: present
+    url: 'https://pkgs.tailscale.com/stable/{{ distro }}/{{ major }}.gpg'
+
+- name: Install APT repository
+  apt_repository:
+    repo: 'deb https://pkgs.tailscale.com/stable/{{ distro }} {{ major }} main'
+    filename: tailscale.list
+
+- name: Install packages
+  ansible.builtin.apt:
+    name: tailscale
+    state: present
+
+- name: Enable service
+  systemd:
+    name: tailscaled
+    enabled: true
+    state: started
+
+- name: Validate "tailscale_authkey" variable
+  assert:
+    that:
+      - tailscale_authkey is defined
+      - tailscale_authkey|length >= 30
+    quiet: true
+    success_msg: 'TAILSCALE_AUTHKEY is valid'
+  register: authorization
+  ignore_errors: true
+
+- name: Check if network is up
+  command: tailscale status
+  register: status
+  failed_when: status.rc|int > 1
+  changed_when: false
+
+- name: Connect host to network
+  command: "tailscale up -authkey {{ tailscale_authkey }}"
+  no_log: true
+  when:
+    - status.rc|int != 0
+    - not tailscale_router
+    - not authorization.failed
+  register: tailscale_node
+  changed_when: tailscale_node.rc|int == 0
+
+- name: Setup host IP forwarding options
+  when: tailscale_router|bool
+  sysctl:
+    name: "{{ item }}"
+    value: '1'
+    sysctl_set: true
+    state: present
+    reload: true
+  loop:
+    - 'net.ipv4.ip_forward'
+    - 'net.ipv6.conf.all.forwarding'
+
+- name: Connect subnet router
+  command: "tailscale up -authkey {{ tailscale_authkey }} --advertise-routes={{ tailscale_routes }} {{ tailscale_args }}"
+  no_log: true
+  when:
+    - status.rc|int != 0
+    - tailscale_router|bool
+    - not authorization.failed
+  register: tailscale_router
+  changed_when: tailscale_router.rc|int == 0
+
+- name: Check IP address
+  command: tailscale ip
+  register: ip_check
+  failed_when: false
+  changed_when: false
+
+- name: Set IP address as fact
+  when: ip_check.rc|int == 0
+  set_fact:
+    tailscale_ip: "{{ ip_check.stdout_lines[0] }}"
+
+- name: Check network status
+  command: tailscale status
+  changed_when: false
+  failed_when: status.rc|int > 1
+  register: status_check
+
+- name: Display IP
+  debug:
+     msg: "{{ status_check.stdout_lines }}"
+...

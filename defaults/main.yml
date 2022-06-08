@@ -1,0 +1,7 @@
+---
+tailscale_authkey: null
+tailscale_args: null
+verbose: false
+tailscale_up_skip: false
+release_stability: stable
+insecurely_log_authkey: false
